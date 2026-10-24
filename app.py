@@ -2,7 +2,7 @@ import os
 import sys
 from app import create_app
 from app.networking.monitoring import get_server_network_interfaces
-
+# CI/CD verification: automated pipeline test
 app = create_app()
 
 if __name__ == '__main__':
