@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}Performance Testing — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>⚡ HTTP Network Performance Benchmark</h1>
+    <p>Measure real HTTP response times against this running server. All metrics are calculated from actual requests.</p>
+  </div>
+
+  <div class="note" style="margin-bottom:20px;">
+    ⚠ <strong>Measurement Scope:</strong> HTTP Response Time measures the complete round-trip including Python WSGI processing time, not just raw network propagation delay.
+    Max 100 requests per benchmark run to avoid overloading the server.
+  </div>
+
+  <!-- Benchmark Form -->
+  <section class="card-section">
+    <h2 class="section-title">🔧 Configure & Run Benchmark</h2>
+    <form method="POST" action="{{ url_for('networking.performance') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="form-row">
+        <div class="form-group" style="flex:3">
+          <label>Target URL</label>
+          <input type="url" name="target_url" class="form-control" value="{{ target_url }}" required />
+        </div>
+        <div class="form-group">
+          <label>Request Count (1–100)</label>
+          <input type="number" name="request_count" class="form-control" value="{{ req_count }}" min="1" max="100" />
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Test Name (for records)</label>
+          <input type="text" name="test_name" class="form-control" value="HTTP Response Benchmark" />
+        </div>
+        <div class="form-group" style="display:flex; align-items:flex-end;">
+          <button type="submit" class="btn btn-primary">▶ Run Benchmark</button>
+        </div>
+      </div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <strong>Preset Tests:</strong>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="setTest('http://127.0.0.1:{{ server_port }}/api/health', 20, 'Health Endpoint Benchmark')">Health Check ×20</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="setTest('http://127.0.0.1:{{ server_port }}/', 20, 'Home Page Benchmark')">Home Page ×20</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="setTest('http://127.0.0.1:{{ server_port }}/api/health', 50, 'Heavy Benchmark ×50')">Heavy ×50</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="setTest('http://127.0.0.1:{{ server_port }}/nonexistent-404', 10, '404 Error Benchmark')">404 Error ×10</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Benchmark Results -->
+  {% if result %}
+  <section class="card-section">
+    <h2 class="section-title">📊 Benchmark Results</h2>
+    <div class="perf-metric-grid">
+      <div class="perf-metric"><div class="pm-val">{{ result.request_count }}</div><div class="pm-label">Total Requests</div></div>
+      <div class="perf-metric pm-ok"><div class="pm-val">{{ result.successful_requests }}</div><div class="pm-label">Successful</div></div>
+      <div class="perf-metric {{ 'pm-fail' if result.failed_requests > 0 else 'pm-ok' }}"><div class="pm-val">{{ result.failed_requests }}</div><div class="pm-label">Failed</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.failure_percentage }}%</div><div class="pm-label">Failure Rate</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.avg_response_ms }}ms</div><div class="pm-label">Avg Response Time</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.min_response_ms }}ms</div><div class="pm-label">Min Response Time</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.max_response_ms }}ms</div><div class="pm-label">Max Response Time</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.median_response_ms }}ms</div><div class="pm-label">Median (P50)</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.p95_response_ms }}ms</div><div class="pm-label">95th Percentile</div></div>
+      <div class="perf-metric pm-ok"><div class="pm-val">{{ result.throughput_rps }}</div><div class="pm-label">Req/sec (Throughput)</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.total_duration_sec }}s</div><div class="pm-label">Total Duration</div></div>
+      <div class="perf-metric"><div class="pm-val">{{ result.target_url }}</div><div class="pm-label">Target URL</div></div>
+    </div>
+
+    <!-- Latency Sparkline (text chart using divs) -->
+    <h4 style="margin:20px 0 10px;">Response Time Distribution (ms)</h4>
+    <div class="latency-chart" id="latency-chart"></div>
+    <div class="latency-chart-labels">
+      <span>0ms</span>
+      <span style="text-align:right">{{ result.max_response_ms }}ms</span>
+    </div>
+
+    <div class="metric-defs" style="margin-top:15px;">
+      <h4>Metric Definitions</h4>
+      {% for k, v in result.metric_definitions.items() %}
+      <div class="metric-def-row"><strong>{{ k }}:</strong> {{ v }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="status-codes" style="margin-top:15px;">
+      <strong>HTTP Status Codes Received:</strong>
+      {% for code, count in result.status_codes.items() %}
+      <span class="stat-chip {{ 'chip-green' if code|string|int(-1) < 400 else 'chip-red' }}">{{ code }}: {{ count }}</span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <script>
+  // Simple horizontal bar chart for latencies
+  const latencies = {{ result.individual_latencies | tojson }};
+  const maxVal = Math.max(...latencies) || 1;
+  const chart = document.getElementById('latency-chart');
+  latencies.forEach((v, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'lat-bar';
+    bar.style.width = (v / maxVal * 100) + '%';
+    bar.title = `Request ${i+1}: ${v}ms`;
+    bar.style.backgroundColor = v > maxVal * 0.75 ? '#e74c3c' : v > maxVal * 0.5 ? '#f39c12' : '#27ae60';
+    chart.appendChild(bar);
+  });
+  </script>
+  {% endif %}
+
+  <!-- History -->
+  <section class="card-section">
+    <h2 class="section-title">📋 Benchmark History (Last 15 Runs)</h2>
+    {% if history %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr><th>Test Name</th><th>Requests</th><th>OK</th><th>Fail</th><th>Avg ms</th><th>Min ms</th><th>Max ms</th><th>P95 ms</th><th>RPS</th><th>Duration</th><th>Timestamp</th></tr>
+        </thead>
+        <tbody>
+          {% for h in history %}
+          <tr>
+            <td>{{ h.test_name }}</td>
+            <td>{{ h.request_count }}</td>
+            <td class="text-success">{{ h.successful_requests }}</td>
+            <td class="{{ 'text-danger' if h.failed_requests > 0 else '' }}">{{ h.failed_requests }}</td>
+            <td>{{ h.avg_response_ms }}</td>
+            <td>{{ h.min_response_ms }}</td>
+            <td>{{ h.max_response_ms }}</td>
+            <td>{{ h.p95_response_ms }}</td>
+            <td>{{ h.throughput_rps }}</td>
+            <td>{{ h.total_duration_sec }}s</td>
+            <td style="font-size:0.8rem; white-space:nowrap">{{ h.timestamp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No benchmarks run yet. Use the form above to start your first benchmark.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setTest(url, count, name) {
+  document.querySelector('input[name="target_url"]').value = url;
+  document.querySelector('input[name="request_count"]').value = count;
+  document.querySelector('input[name="test_name"]').value = name;
+}
+</script>
+{% endblock %}

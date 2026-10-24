@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}Network Monitor — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>📡 Network & Application Monitor</h1>
+    <p>Live application health, IP addressing, and networking event log. Refresh this page for updated statistics.</p>
+  </div>
+
+  <div class="note" style="margin-bottom:20px;">
+    ⚠ <strong>Scope Clarification:</strong> This dashboard shows <em>application-level</em> events (HTTP requests, database operations, user activity).
+    It does <em>not</em> capture raw network packets. For TCP/IP packet-level analysis, use Wireshark with filter <code>tcp.port == 5000</code>.
+  </div>
+
+  <!-- Server Health Cards -->
+  <div class="health-card-grid">
+    <div class="health-card {{ 'card-green' if health.status == 'ONLINE' else 'card-red' }}">
+      <div class="hc-icon">🟢</div>
+      <div class="hc-title">Application Status</div>
+      <div class="hc-value">{{ health.status }}</div>
+    </div>
+    <div class="health-card card-blue">
+      <div class="hc-icon">🖥</div>
+      <div class="hc-title">Server Hostname</div>
+      <div class="hc-value">{{ health.network_info.hostname }}</div>
+    </div>
+    <div class="health-card card-blue">
+      <div class="hc-icon">🌐</div>
+      <div class="hc-title">Primary LAN IP</div>
+      <div class="hc-value">{{ health.network_info.primary_lan_ip }}</div>
+    </div>
+    <div class="health-card card-blue">
+      <div class="hc-icon">🔌</div>
+      <div class="hc-title">TCP Port</div>
+      <div class="hc-value">{{ health.server_port }}</div>
+    </div>
+    <div class="health-card {{ 'card-green' if health.database_status == 'HEALTHY' else 'card-red' }}">
+      <div class="hc-icon">🗄</div>
+      <div class="hc-title">Database</div>
+      <div class="hc-value">{{ health.database_status }}</div>
+      <div class="hc-sub">{{ health.database_latency_ms }}ms query latency</div>
+    </div>
+    <div class="health-card card-purple">
+      <div class="hc-icon">⏱</div>
+      <div class="hc-title">Server Uptime</div>
+      <div class="hc-value">{{ health.uptime }}</div>
+    </div>
+  </div>
+
+  <!-- Network Addressing Plan -->
+  <section class="card-section">
+    <h2 class="section-title">🗺 Reference Network Addressing Plan</h2>
+    <div class="addr-plan-grid">
+      <div class="addr-row"><span>Network CIDR:</span><code>{{ sample_plan.network_cidr }}</code></div>
+      <div class="addr-row"><span>Subnet Mask:</span><code>{{ sample_plan.subnet_mask }}</code></div>
+      <div class="addr-row"><span>Gateway:</span><code>{{ sample_plan.gateway }}</code></div>
+      <div class="addr-row"><span>DNS Server:</span><code>{{ sample_plan.dns_server }}</code></div>
+      <div class="addr-row"><span>Exam Server:</span><code>{{ sample_plan.exam_server_static }}</code></div>
+      <div class="addr-row"><span>DHCP Pool:</span><code>{{ sample_plan.dhcp_pool_range }}</code></div>
+      <div class="addr-row"><span>Broadcast:</span><code>{{ sample_plan.broadcast_address }}</code></div>
+      <div class="addr-row"><span>Total Usable Hosts:</span><code>{{ sample_plan.total_hosts }}</code></div>
+    </div>
+    <div class="access-links">
+      <a href="http://127.0.0.1:{{ health.server_port }}" target="_blank" class="btn btn-sm">Open Localhost →</a>
+      <a href="http://{{ health.network_info.primary_lan_ip }}:{{ health.server_port }}" target="_blank" class="btn btn-sm">Open LAN URL →</a>
+    </div>
+  </section>
+
+  <!-- Event Statistics -->
+  {% if stats.event_summary %}
+  <section class="card-section">
+    <h2 class="section-title">📊 Event Type Summary</h2>
+    <div class="stat-chips">
+      {% for k, v in stats.event_summary.items() %}
+      <span class="stat-chip">{{ k }}: <strong>{{ v }}</strong></span>
+      {% endfor %}
+    </div>
+    <div class="stat-chips" style="margin-top:10px;">
+      {% for k, v in stats.status_summary.items() %}
+      <span class="stat-chip {{ 'chip-green' if k.startswith('2') else 'chip-red' if k.startswith('5') else 'chip-yellow' }}">
+        HTTP {{ k }}: <strong>{{ v }}</strong>
+      </span>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Recent Event Logs -->
+  <section class="card-section">
+    <h2 class="section-title">📋 Recent Application Events (Last 30)</h2>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr><th>Timestamp</th><th>Event Type</th><th>Client IP</th><th>Status</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          {% for log in recent_logs %}
+          <tr>
+            <td style="white-space:nowrap; font-size:0.8rem;">{{ log.timestamp }}</td>
+            <td><span class="log-type-badge">{{ log.event_type }}</span></td>
+            <td><code>{{ log.client_ip }}</code></td>
+            <td>{{ log.status_code }}</td>
+            <td style="font-size:0.85rem;">{{ log.description }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty-cell">No events logged yet. Interact with the application to generate events.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

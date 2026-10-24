@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block title %}Network Topology — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>🗺 Network Topology & Protocol Reference</h1>
+    <p>Architecture, IP addressing plan, protocol stack explanations, and real vs. simulated distinctions.</p>
+  </div>
+
+  <!-- Logical Topology Diagram -->
+  <section class="card-section">
+    <h2 class="section-title">📐 Logical Network Topology</h2>
+    <pre class="arch-ascii topo-diag">
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │                   EXAMINATION LAN — 192.168.10.0/24                      │
+  │                                                                          │
+  │   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                 │
+  │   │ Student PC 1│    │ Student PC 2│    │ Student PC 3│                 │
+  │   │192.168.10.100│   │192.168.10.101│   │192.168.10.102│                │
+  │   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                 │
+  │          │                  │                   │                        │
+  │          └──────────────────┼───────────────────┘                        │
+  │                             │ (Ethernet / Wi-Fi LAN)                     │
+  │                        ┌────┴────┐                                       │
+  │                        │ L2 Switch│                                      │
+  │                        │192.168.10.2│                                    │
+  │                        └────┬────┘                                       │
+  │                             │                                            │
+  │                    ┌────────┴──────────────────────────────────┐         │
+  │                    │      EXAMINATION SERVER (Static IP)        │         │
+  │                    │         192.168.10.50 : TCP 5000           │         │
+  │                    │                                           │         │
+  │                    │  ┌───────────────┐  ┌──────────────────┐ │         │
+  │                    │  │ Flask Web App │  │ SQLite Database  │ │         │
+  │                    │  │ TCP Port 5000 │  │ exam_network.db  │ │         │
+  │                    │  └───────────────┘  └──────────────────┘ │         │
+  │                    │  ┌───────────────┐  ┌──────────────────┐ │         │
+  │                    │  │ DHCP Sim      │  │ DNS Simulator    │ │         │
+  │                    │  │ Pool .100–.120│  │ exam.local→.50   │ │         │
+  │                    │  └───────────────┘  └──────────────────┘ │         │
+  │                    └───────────────────────────────────────────┘         │
+  │                                                                          │
+  │  ┌────────────────────────────────────────────────────────────────────┐  │
+  │  │ Default Gateway / Router: 192.168.10.1  (Internet boundary / ISP) │  │
+  │  └────────────────────────────────────────────────────────────────────┘  │
+  └──────────────────────────────────────────────────────────────────────────┘
+    </pre>
+  </section>
+
+  <!-- IP Addressing Plan -->
+  <section class="card-section">
+    <h2 class="section-title">📋 IP Addressing Plan</h2>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>Device / Role</th><th>IP Address</th><th>Assignment</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Default Gateway</td><td><code>192.168.10.1</code></td><td>Static</td><td>Router — exits examination subnet</td></tr>
+          <tr><td>L2 Switch</td><td><code>192.168.10.2</code></td><td>Static (Mgmt)</td><td>Classroom Ethernet switch</td></tr>
+          <tr><td>DNS Server (Simulated)</td><td><code>192.168.10.10</code></td><td>Static</td><td>Resolves exam.local → .50</td></tr>
+          <tr><td>Examination Server</td><td><code>192.168.10.50</code></td><td>Static</td><td>Flask app, SQLite DB — TCP:5000</td></tr>
+          <tr><td>DHCP Pool Start</td><td><code>192.168.10.100</code></td><td>DHCP Dynamic</td><td>Student workstation range start</td></tr>
+          <tr><td>DHCP Pool End</td><td><code>192.168.10.120</code></td><td>DHCP Dynamic</td><td>Student workstation range end</td></tr>
+          <tr><td>Broadcast Address</td><td><code>192.168.10.255</code></td><td>Reserved</td><td>Subnet-wide broadcast</td></tr>
+          <tr class="highlight-row"><td>Current Server IP (Live)</td><td><code>{{ server_info.primary_lan_ip }}</code></td><td>OS-Detected</td><td>Actual IP of this running server</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Protocol Explanations -->
+  <section class="card-section">
+    <h2 class="section-title">🔬 Protocol Stack Explanations</h2>
+    <div class="protocol-accordion">
+      <div class="proto-card">
+        <h4>TCP/IP & Three-Way Handshake</h4>
+        <p>HTTP runs over TCP (Layer 4), which runs over IP (Layer 3). Before data transfer, TCP establishes a reliable connection via a 3-step handshake:</p>
+        <ol><li><strong>SYN</strong> — Client initiates connection (Synchronize Sequence Number)</li>
+            <li><strong>SYN-ACK</strong> — Server acknowledges and sends its own SYN</li>
+            <li><strong>ACK</strong> — Client acknowledges; connection is established</li></ol>
+        <p>Wireshark filter: <code>tcp.port == 5000 and tcp.flags.syn == 1</code></p>
+      </div>
+      <div class="proto-card">
+        <h4>HTTP Request-Response Cycle</h4>
+        <p>Student browsers send HTTP GET/POST requests to the Flask server on TCP port 5000. Flask returns HTML responses. HTTP is stateless — sessions are maintained via server-side session cookies (HTTPONLY, SameSite=Lax).</p>
+        <p>Wireshark filter: <code>http and tcp.port == 5000</code></p>
+      </div>
+      <div class="proto-card">
+        <h4>DHCP — Dynamic Host Configuration Protocol</h4>
+        <p>DHCP operates over UDP: Client (:68) → Server (:67). The 4-step DORA process automatically assigns IP, subnet mask, gateway, DNS, and lease time to connecting devices. <strong>This project simulates DORA without binding real UDP sockets or modifying network interfaces.</strong></p>
+      </div>
+      <div class="proto-card">
+        <h4>DNS — Domain Name System</h4>
+        <p>DNS resolves hostnames to IP addresses over UDP port 53 (TCP for large responses). Our simulation resolves <code>exam.local → 192.168.10.50</code> via a Python database lookup. <strong>No real DNS packets are generated by this simulation.</strong> For real <code>exam.local</code> browser access, a Windows hosts file entry or a local DNS server (e.g. dnsmasq) would be required.</p>
+      </div>
+      <div class="proto-card">
+        <h4>IPv4 Subnetting</h4>
+        <p>IPv4 addresses are 32-bit numbers divided by a subnet mask into Network ID and Host ID bits. The /24 mask (255.255.255.0) gives 254 usable hosts. Students can calculate any subnet using the built-in calculator.</p>
+        <p><a href="{{ url_for('networking.subnet_calculator') }}">Open Subnet Calculator →</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Real vs Simulated -->
+  <section class="card-section">
+    <h2 class="section-title">⚖ Real vs. Simulated Functionality</h2>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>Feature</th><th>Real / Functional</th><th>Simulated / Academic</th></tr></thead>
+        <tbody>
+          <tr class="row-real"><td>Flask HTTP Web Server</td><td>✅ Real — runs on TCP port {{ server_port }}</td><td>—</td></tr>
+          <tr class="row-real"><td>TCP/IP Client–Server Communication</td><td>✅ Real — browser ↔ Flask</td><td>—</td></tr>
+          <tr class="row-real"><td>Multi-Client Access (LAN)</td><td>✅ Real — any browser on LAN subnet</td><td>—</td></tr>
+          <tr class="row-real"><td>SQLite Database Storage</td><td>✅ Real — persistent SQLite file</td><td>—</td></tr>
+          <tr class="row-real"><td>Password Hashing (Werkzeug)</td><td>✅ Real — bcrypt-compatible</td><td>—</td></tr>
+          <tr class="row-real"><td>Subnet Calculator</td><td>✅ Real — Python ipaddress module</td><td>—</td></tr>
+          <tr class="row-real"><td>HTTP Performance Measurement</td><td>✅ Real — actual requests.get() timing</td><td>—</td></tr>
+          <tr class="row-sim"><td>DHCP Server (DORA Process)</td><td>—</td><td>⚠ Simulated — no UDP port 67/68 bound</td></tr>
+          <tr class="row-sim"><td>DNS Server (exam.local resolution)</td><td>—</td><td>⚠ Simulated — no UDP port 53 bound</td></tr>
+          <tr class="row-sim"><td>IP address assignment to adapters</td><td>—</td><td>⚠ Simulated — database-only tracking</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Wireshark Quick Guide -->
+  <section class="card-section">
+    <h2 class="section-title">🦈 Wireshark Verification Filters</h2>
+    <div class="wireshark-filters">
+      <div class="wf-row"><code>tcp.port == 5000</code><span>All traffic to/from this examination server</span></div>
+      <div class="wf-row"><code>http and tcp.port == 5000</code><span>HTTP request/response payloads</span></div>
+      <div class="wf-row"><code>tcp.flags.syn == 1 and tcp.port == 5000</code><span>TCP 3-way handshake SYN packets</span></div>
+      <div class="wf-row"><code>dns</code><span>Real DNS queries only (not simulation)</span></div>
+      <div class="wf-row"><code>dhcp or bootp</code><span>Real DHCP packets only (not simulation)</span></div>
+    </div>
+    <p class="note">⚠ DHCP and DNS Wireshark filters will only show packets if a real DHCP/DNS service is running. The simulation in this project uses Python database lookups and does not generate UDP packets.</p>
+  </section>
+</div>
+{% endblock %}

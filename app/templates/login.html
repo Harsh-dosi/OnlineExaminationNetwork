@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Login — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-icon">🔑</div>
+      <h1>Examination Portal Login</h1>
+      <p>Enter your credentials to access the examination system</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('auth.login') }}" class="auth-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" class="form-control"
+               placeholder="e.g. student1 or admin"
+               autocomplete="username" required autofocus />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" class="form-control"
+               placeholder="Enter your password"
+               autocomplete="current-password" required />
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">Login →</button>
+    </form>
+
+    <div class="auth-demo-info">
+      <h4>🧪 Demonstration Credentials</h4>
+      <table class="demo-creds-table">
+        <tr><th>Role</th><th>Username</th><th>Password</th></tr>
+        <tr><td>👑 Admin</td><td><code>admin</code></td><td><code>admin123</code></td></tr>
+        <tr><td>🎓 Student</td><td><code>student1</code></td><td><code>pass123</code></td></tr>
+        <tr><td>🎓 Student</td><td><code>student2</code></td><td><code>pass123</code></td></tr>
+        <tr><td>🎓 Student</td><td><code>student3</code></td><td><code>pass123</code></td></tr>
+      </table>
+      <p class="note">⚠ Passwords are stored as bcrypt hashes — never as plain text. This is an academic demo; do not use real credentials.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

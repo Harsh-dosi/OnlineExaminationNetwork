@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block title %}Home — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+  <div class="hero-content">
+    <h1 class="hero-title">🌐 Online Examination Network</h1>
+    <p class="hero-subtitle">Design and Implementation of an Isolated Network with Automatic Addressing, Centralized Web Access, and Client–Server Communication</p>
+    <p class="hero-meta">B.Tech Computer Science &amp; Engineering — Computer Networks Academic Project</p>
+
+    <div class="hero-status-bar">
+      <div class="status-pill {{ 'status-online' if health.status == 'ONLINE' else 'status-degraded' }}">
+        ● Server: {{ health.status }}
+      </div>
+      <div class="status-pill status-info">
+        🖥 LAN IP: {{ interfaces.primary_lan_ip }}:{{ server_port }}
+      </div>
+      <div class="status-pill status-info">
+        🗄 Database: {{ health.database_status }}
+      </div>
+      <div class="status-pill status-info">
+        ⏱ Uptime: {{ health.uptime }}
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      {% if current_user %}
+        {% if current_user.role == 'admin' %}
+          <a href="{{ url_for('admin.dashboard') }}" class="btn btn-primary">⚙ Admin Dashboard</a>
+        {% else %}
+          <a href="{{ url_for('student.dashboard') }}" class="btn btn-primary">📋 My Exam Dashboard</a>
+        {% endif %}
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Logout</a>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary">🔑 Login to Examination Portal</a>
+      {% endif %}
+      <a href="{{ url_for('networking.dashboard') }}" class="btn btn-secondary">📡 Network Monitor</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Architecture Overview -->
+  <section class="card-section">
+    <h2 class="section-title">🏗 Network Architecture</h2>
+    <div class="arch-diagram">
+      <pre class="arch-ascii">
+  ┌──────────────────┐    TCP/IP LAN    ┌──────────────────────────────────────────────┐
+  │  Student Client 1│ ─────────────── │       Examination Server                     │
+  │  Student Client 2│ ─────────────── │   http://{{ interfaces.primary_lan_ip }}:{{ server_port }}               │
+  │  Student Client 3│ ─────────────── │                                              │
+  └──────────────────┘                 │  ┌─────────────┐  ┌──────────────────────┐  │
+                                       │  │ Flask Web   │  │  SQLite Database     │  │
+         [Subnet: 192.168.10.0/24]     │  │ Application │  │  exam_network.db     │  │
+         [DHCP Pool: .100–.120]        │  └─────────────┘  └──────────────────────┘  │
+         [DNS: exam.local → .50]       │  ┌─────────────┐  ┌──────────────────────┐  │
+                                       │  │ DHCP Sim    │  │  DNS Simulator       │  │
+                                       │  └─────────────┘  └──────────────────────┘  │
+                                       └──────────────────────────────────────────────┘
+      </pre>
+    </div>
+  </section>
+
+  <!-- Feature Cards -->
+  <section class="card-section">
+    <h2 class="section-title">🔬 Networking Features</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🔢</div>
+        <h3>Subnet Calculator</h3>
+        <p>Interactive IPv4 subnet calculator with CIDR notation, network/broadcast addresses, usable host range, and binary representation.</p>
+        <a href="{{ url_for('networking.subnet_calculator') }}" class="btn btn-sm">Open Calculator →</a>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📡</div>
+        <h3>DHCP Simulation</h3>
+        <p>Full DORA (Discover → Offer → Request → ACK) process simulation with address pool management and lease tracking.</p>
+        <a href="{{ url_for('networking.dhcp_demo') }}" class="btn btn-sm">Open DHCP Sim →</a>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔍</div>
+        <h3>DNS Simulation</h3>
+        <p>Authoritative zone resolver for <code>exam.local</code> with TTL-aware caching, NXDOMAIN responses, and cache inspection.</p>
+        <a href="{{ url_for('networking.dns_demo') }}" class="btn btn-sm">Open DNS Sim →</a>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Performance Testing</h3>
+        <p>Real HTTP benchmark with avg/min/max/P95 latency, throughput (req/sec), failure rates, and persistent result history.</p>
+        <a href="{{ url_for('networking.performance') }}" class="btn btn-sm">Run Benchmark →</a>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗺</div>
+        <h3>Network Topology</h3>
+        <p>Visual topology diagram, IP addressing plan, protocol stack explanations (TCP/IP, HTTP, DHCP, DNS), and simulation vs. real distinction.</p>
+        <a href="{{ url_for('networking.topology') }}" class="btn btn-sm">View Topology →</a>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🖥</div>
+        <h3>Network Monitor</h3>
+        <p>Live server health, database status, IP detection, event logs, HTTP request statistics, and system uptime.</p>
+        <a href="{{ url_for('networking.dashboard') }}" class="btn btn-sm">Open Monitor →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Access Info -->
+  <section class="card-section">
+    <h2 class="section-title">🔌 Multi-Client LAN Access</h2>
+    <div class="info-grid">
+      <div class="info-box">
+        <h4>Server (localhost)</h4>
+        <code>http://127.0.0.1:{{ server_port }}</code>
+      </div>
+      <div class="info-box">
+        <h4>LAN Clients (same subnet)</h4>
+        <code>http://{{ interfaces.primary_lan_ip }}:{{ server_port }}</code>
+      </div>
+      <div class="info-box">
+        <h4>Demo Credentials</h4>
+        <small>Student: <strong>student1</strong> / <strong>pass123</strong><br>Admin: <strong>admin</strong> / <strong>admin123</strong></small>
+      </div>
+    </div>
+    <p class="note">⚠ For LAN access: allow inbound TCP port {{ server_port }} in Windows Defender Firewall (narrowly scoped to the classroom subnet). This server runs on unencrypted HTTP — use only on a trusted isolated network.</p>
+  </section>
+</div>
+{% endblock %}

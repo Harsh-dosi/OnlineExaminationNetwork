@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}500 Server Error — Online Examination Network{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="error-code" style="color:#e74c3c;">500</div>
+  <h1>Internal Server Error</h1>
+  <p>An unexpected error occurred on the server. The error has been logged.</p>
+  <p class="note">This is a documented failure scenario. Details are available in the Admin Event Logs — no sensitive information is exposed to the client.</p>
+  <div style="margin-top:20px;">
+    <a href="{{ url_for('index') }}" class="btn btn-primary">← Return Home</a>
+  </div>
+</div>
+{% endblock %}

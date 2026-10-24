@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}DHCP Simulation — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>📡 DHCP Simulation Module</h1>
+    <div class="sim-badge">⚠ SIMULATION — Not a real DHCP server. No real UDP ports bound. No network adapters modified.</div>
+  </div>
+
+  <section class="card-section">
+    <h2 class="section-title">📖 DHCP DORA Process Explained</h2>
+    <div class="dora-explain">
+      <div class="dora-step"><span class="dora-num">1</span><strong>DISCOVER</strong><p>Client broadcasts (255.255.255.255) on UDP :68→:67, requesting IP configuration.</p></div>
+      <div class="dora-arrow">→</div>
+      <div class="dora-step"><span class="dora-num">2</span><strong>OFFER</strong><p>Server responds with offered IP, subnet, gateway, DNS, and lease duration on UDP :67→:68.</p></div>
+      <div class="dora-arrow">→</div>
+      <div class="dora-step"><span class="dora-num">3</span><strong>REQUEST</strong><p>Client broadcasts acceptance, formally requesting the offered IP address.</p></div>
+      <div class="dora-arrow">→</div>
+      <div class="dora-step"><span class="dora-num">4</span><strong>ACKNOWLEDGE</strong><p>Server confirms the lease, committing the IP→MAC binding for the lease duration.</p></div>
+    </div>
+  </section>
+
+  <!-- Pool Status -->
+  <section class="card-section">
+    <h2 class="section-title">🏊 Address Pool Status</h2>
+    <div class="pool-stat-grid">
+      <div class="pool-stat"><span class="pool-num">{{ status.total_pool_capacity }}</span><span>Total Pool Capacity</span></div>
+      <div class="pool-stat pool-leased"><span class="pool-num">{{ status.leased_count }}</span><span>Active Leases</span></div>
+      <div class="pool-stat pool-free"><span class="pool-num">{{ status.available_count }}</span><span>Available IPs</span></div>
+    </div>
+    <p><strong>Pool Range:</strong> <code>{{ status.pool_range }}</code></p>
+    {% if status.available_count == 0 %}
+    <div class="alert alert-danger">🔴 Pool Exhausted — No IP addresses available. Release existing leases to free space.</div>
+    {% endif %}
+  </section>
+
+  <!-- Request / Release Form -->
+  <section class="card-section">
+    <h2 class="section-title">🔧 Simulate DHCP Request / Release</h2>
+    <form method="POST" action="{{ url_for('networking.dhcp_demo') }}" class="dhcp-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Client MAC Address</label>
+          <input type="text" name="mac_address" class="form-control" placeholder="e.g. AA:BB:CC:DD:EE:01" required />
+        </div>
+        <div class="form-group">
+          <label>Client Hostname</label>
+          <input type="text" name="hostname" class="form-control" placeholder="e.g. student-pc-01" />
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button type="submit" name="action" value="request" class="btn btn-primary">📡 Simulate DORA Request</button>
+        <button type="submit" name="action" value="release" class="btn btn-secondary">🔄 Simulate DHCP Release</button>
+      </div>
+    </form>
+
+    <div class="quick-mac-presets" style="margin-top:12px;">
+      <strong>Quick Presets:</strong>
+      {% for i in range(1, 6) %}
+      <button class="btn btn-sm" onclick="setMAC('AA:BB:CC:DD:EE:0{{ i }}', 'student-pc-0{{ i }}')">Client {{ i }}</button>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- DORA Trace -->
+  {% if dora_result %}
+  <section class="card-section">
+    <h2 class="section-title">✅ DORA Trace — Simulated Packet Exchange</h2>
+    <div class="alert alert-success">
+      <strong>Lease Allocated:</strong> IP <code>{{ dora_result.assigned_ip }}</code> assigned to
+      <code>{{ dora_result.mac_address }}</code> ({{ dora_result.hostname }})
+      {% if dora_result.is_renewal %} — <em>Lease Renewed</em>{% endif %}
+    </div>
+    <div class="dora-trace">
+      {% for step in dora_result.dora_trace %}
+      <div class="trace-step">
+        <div class="trace-step-header">
+          <span class="trace-step-num">{{ step.step }}</span>
+          <span class="trace-l4">{{ step.layer4 }}</span>
+        </div>
+        <div class="trace-parties"><strong>{{ step.sender }}</strong> → <strong>{{ step.receiver }}</strong></div>
+        <p>{{ step.message }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="lease-details">
+      <h4>Lease Configuration Delivered (ACK Payload)</h4>
+      <div class="addr-plan-grid">
+        <div class="addr-row"><span>Assigned IP:</span><code>{{ dora_result.assigned_ip }}</code></div>
+        <div class="addr-row"><span>Subnet Mask:</span><code>{{ dora_result.subnet_mask }}</code></div>
+        <div class="addr-row"><span>Default Gateway:</span><code>{{ dora_result.gateway }}</code></div>
+        <div class="addr-row"><span>DNS Server:</span><code>{{ dora_result.dns_server }}</code></div>
+        <div class="addr-row"><span>Lease Start:</span><code>{{ dora_result.lease_start }}</code></div>
+        <div class="addr-row"><span>Lease End:</span><code>{{ dora_result.lease_end }}</code></div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Lease Table -->
+  <section class="card-section">
+    <h2 class="section-title">📋 All Lease Records</h2>
+    {% if status.leases %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr><th>IP Address</th><th>MAC Address</th><th>Hostname</th><th>Status</th><th>Lease Start</th><th>Lease End</th></tr>
+        </thead>
+        <tbody>
+          {% for lease in status.leases %}
+          <tr>
+            <td><code>{{ lease.ip_address }}</code></td>
+            <td><code>{{ lease.mac_address }}</code></td>
+            <td>{{ lease.hostname }}</td>
+            <td>
+              {% if lease.status == 'active' %}<span class="badge badge-success">Active</span>
+              {% elif lease.status == 'released' %}<span class="badge badge-secondary">Released</span>
+              {% else %}<span class="badge badge-warning">Expired</span>{% endif %}
+            </td>
+            <td>{{ lease.lease_start }}</td>
+            <td>{{ lease.lease_end }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No lease records. Use the form above to request simulated IP allocations.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setMAC(mac, host) {
+  document.querySelector('input[name="mac_address"]').value = mac;
+  document.querySelector('input[name="hostname"]').value = host;
+}
+</script>
+{% endblock %}

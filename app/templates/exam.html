@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% block title %}{{ exam.title }} — Examination{% endblock %}
+
+{% block head %}
+<style>
+  .timer-bar { position: sticky; top: 0; z-index: 100; background: #1a1a2e; color: #fff; padding: 10px 20px;
+               display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #e94560; }
+  .timer-display { font-size: 1.5rem; font-weight: 700; font-family: monospace; }
+  .timer-warning { color: #ffa500; }
+  .timer-danger { color: #ff4444; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .q-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+  .q-nav-btn { width: 38px; height: 38px; border: 2px solid #ccc; background: #fff;
+               border-radius: 50%; cursor: pointer; font-weight: 700; transition: all 0.2s; }
+  .q-nav-btn.answered { background: #28a745; color: #fff; border-color: #28a745; }
+  .q-nav-btn.current { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.3); }
+  .question-block { display: none; }
+  .question-block.active { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Sticky Timer -->
+<div class="timer-bar">
+  <div>
+    <strong>{{ exam.title }}</strong>
+    <span style="margin-left:15px; font-size:0.85rem; opacity:0.7">Attempt #{{ attempt_id }}</span>
+  </div>
+  <div>
+    <span id="timer-label">⏱ Time Remaining: </span>
+    <span id="timer-display" class="timer-display">--:--</span>
+  </div>
+  <div>
+    <span id="answered-count">0</span> / {{ questions|length }} answered
+  </div>
+</div>
+
+<div class="container">
+  <form id="exam-form" method="POST" action="{{ url_for('student.submit_exam') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="attempt_id" value="{{ attempt_id }}" />
+
+    <!-- Question Navigator -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="margin-bottom:12px;">🗺 Question Navigator</h3>
+      <div class="q-nav" id="q-navigator">
+        {% for q in questions %}
+        <button type="button" class="q-nav-btn" id="nav-{{ q.id }}" onclick="jumpTo({{ loop.index0 }})">{{ loop.index }}</button>
+        {% endfor %}
+      </div>
+      <small style="color:#666;">Green = Answered &nbsp;|&nbsp; Blue outline = Current Question</small>
+    </div>
+
+    <!-- Questions -->
+    {% for q in questions %}
+    <div class="card question-block {% if loop.first %}active{% endif %}" id="q-block-{{ loop.index0 }}" data-qid="{{ q.id }}">
+      <div class="question-header">
+        <span class="q-number">Question {{ loop.index }} of {{ questions|length }}</span>
+        <span class="q-marks">Marks: {{ q.marks }}</span>
+      </div>
+      <p class="question-text">{{ q.question_text }}</p>
+      <div class="options-grid">
+        {% for letter, text in [('A', q.option_a), ('B', q.option_b), ('C', q.option_c), ('D', q.option_d)] %}
+        <label class="option-label" id="opt-label-{{ q.id }}-{{ letter }}">
+          <input type="radio" name="q_{{ q.id }}" value="{{ letter }}"
+                 onchange="markAnswered({{ loop.index0 }}, {{ q.id }})"
+                 class="option-radio" />
+          <span class="option-key">{{ letter }}</span>
+          <span class="option-text">{{ text }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="q-nav-btns" style="margin-top:15px; display:flex; gap:10px;">
+        {% if not loop.first %}
+        <button type="button" class="btn btn-secondary" onclick="jumpTo({{ loop.index0 - 1 }})">← Previous</button>
+        {% endif %}
+        {% if not loop.last %}
+        <button type="button" class="btn btn-primary" onclick="jumpTo({{ loop.index0 + 1 }})">Next →</button>
+        {% else %}
+        <button type="button" class="btn btn-success" onclick="confirmSubmit()">✔ Submit Examination</button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Submit button at bottom -->
+    <div class="card" style="text-align:center; padding:20px;">
+      <p>Review all questions before submitting. Submission is final.</p>
+      <button type="button" class="btn btn-success btn-lg" onclick="confirmSubmit()">✔ Submit Examination</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const REMAINING_SECONDS = {{ remaining_seconds }};
+const TOTAL_QUESTIONS = {{ questions|length }};
+let currentQ = 0;
+let answeredSet = new Set();
+let timerInterval;
+
+function startTimer(secs) {
+  let remaining = secs;
+  const display = document.getElementById('timer-display');
+
+  function tick() {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    display.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+
+    if (remaining <= 60) {
+      display.className = 'timer-display timer-danger';
+    } else if (remaining <= 180) {
+      display.className = 'timer-display timer-warning';
+    }
+
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      display.textContent = '00:00';
+      alert('⏰ Time is up! Your answers are being submitted automatically.');
+      document.getElementById('exam-form').submit();
+      return;
+    }
+    remaining--;
+  }
+
+  tick();
+  timerInterval = setInterval(tick, 1000);
+}
+
+function jumpTo(idx) {
+  document.querySelectorAll('.question-block').forEach((b, i) => {
+    b.classList.toggle('active', i === idx);
+  });
+  document.querySelectorAll('.q-nav-btn').forEach((b, i) => {
+    b.classList.toggle('current', i === idx);
+  });
+  currentQ = idx;
+}
+
+function markAnswered(blockIdx, qid) {
+  answeredSet.add(qid);
+  document.getElementById('nav-' + qid).classList.add('answered');
+  document.getElementById('answered-count').textContent = answeredSet.size;
+
+  // Style selected option
+  document.querySelectorAll(`input[name="q_${qid}"]`).forEach(radio => {
+    const label = radio.parentElement;
+    label.classList.toggle('option-selected', radio.checked);
+  });
+}
+
+function confirmSubmit() {
+  const unanswered = TOTAL_QUESTIONS - answeredSet.size;
+  if (unanswered > 0) {
+    if (!confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`)) return;
+  }
+  document.getElementById('exam-form').submit();
+}
+
+// Init
+startTimer(REMAINING_SECONDS);
+jumpTo(0);
+
+// Prevent accidental navigation
+window.onbeforeunload = function() {
+  return 'Your exam is in progress. Are you sure you want to leave?';
+};
+
+document.getElementById('exam-form').addEventListener('submit', function() {
+  window.onbeforeunload = null;
+});
+</script>
+{% endblock %}

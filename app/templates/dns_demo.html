@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block title %}DNS Simulation — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>🔍 DNS Simulation Module</h1>
+    <div class="sim-badge">⚠ SIMULATION — Simulated authoritative resolver. No real UDP port 53 bound. No Windows hosts file modified.</div>
+  </div>
+
+  <!-- DNS Explanation -->
+  <section class="card-section">
+    <h2 class="section-title">📖 How DNS Resolution Works</h2>
+    <div class="dns-flow">
+      <div class="dns-step"><strong>1. Query</strong><p>Client asks: "What is the IP of <code>exam.local</code>?" (UDP port 53)</p></div>
+      <div class="dora-arrow">→</div>
+      <div class="dns-step"><strong>2. Cache Check</strong><p>Resolver checks its cache for a recent answer within TTL window.</p></div>
+      <div class="dora-arrow">→</div>
+      <div class="dns-step"><strong>3. Zone Lookup</strong><p>If cache miss, query is forwarded to authoritative zone database.</p></div>
+      <div class="dora-arrow">→</div>
+      <div class="dns-step"><strong>4. Response</strong><p>NOERROR (with IP) or NXDOMAIN (not found) is returned and cached.</p></div>
+    </div>
+    <div class="note" style="margin-top:10px;">
+      <strong>Real vs Simulated:</strong> A real DNS lookup generates UDP packets visible in Wireshark with <code>dns</code> display filter.
+      This simulation uses a Python database lookup — no actual UDP packets are generated.
+      For <code>exam.local</code> to resolve in a real browser, you would need a hosts-file entry or a real local DNS server.
+    </div>
+  </section>
+
+  <!-- DNS Query Form -->
+  <section class="card-section">
+    <h2 class="section-title">🔎 Simulate DNS Query</h2>
+    <form method="POST" action="{{ url_for('networking.dns_demo') }}" class="dns-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="form-row">
+        <div class="form-group" style="flex:3">
+          <label>Hostname to Resolve</label>
+          <input type="text" name="query_hostname" class="form-control" placeholder="e.g. exam.local" />
+        </div>
+        <div class="form-group" style="display:flex; align-items:flex-end;">
+          <button type="submit" name="action" value="query" class="btn btn-primary">🔍 Resolve →</button>
+        </div>
+      </div>
+    </form>
+    <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+      <strong>Quick Queries:</strong>
+      {% for r in records %}
+      <button class="btn btn-sm" onclick="setQuery('{{ r.hostname }}')">{{ r.hostname }}</button>
+      {% endfor %}
+      <button class="btn btn-sm btn-secondary" onclick="setQuery('unknown.server')">unknown.server (NXDOMAIN)</button>
+    </div>
+  </section>
+
+  <!-- Query Result -->
+  {% if query_result %}
+  <section class="card-section">
+    <h2 class="section-title">📤 DNS Resolution Result</h2>
+    <div class="dns-result-card {{ 'dns-ok' if query_result.status == 'NOERROR' else 'dns-fail' }}">
+      <div class="dns-result-row"><span>Hostname Queried:</span><code>{{ query_result.hostname }}</code></div>
+      <div class="dns-result-row"><span>Status:</span><strong>{{ query_result.status }}</strong></div>
+      <div class="dns-result-row"><span>Resolved IP:</span>
+        <code>{{ query_result.resolved_ip if query_result.resolved_ip else 'NXDOMAIN — No record found' }}</code>
+      </div>
+      <div class="dns-result-row"><span>Answer Source:</span><span class="source-badge">{{ query_result.source }}</span></div>
+      <div class="dns-result-row"><span>TTL Remaining:</span><code>{{ query_result.ttl_remaining }}s</code></div>
+      <div class="dns-result-row"><span>Cache Hit Count:</span><code>{{ query_result.hit_count }}</code></div>
+      <div class="dns-message">{{ query_result.message }}</div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Add/Update DNS Record (Admin Only) -->
+  {% if current_user and current_user.role == 'admin' %}
+  <section class="card-section">
+    <h2 class="section-title">➕ Add / Update DNS Zone Record (Admin)</h2>
+    <form method="POST" action="{{ url_for('networking.dns_demo') }}" class="dns-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hostname</label>
+          <input type="text" name="hostname" class="form-control" placeholder="e.g. myserver.local" />
+        </div>
+        <div class="form-group">
+          <label>IP Address (A Record)</label>
+          <input type="text" name="target_ip" class="form-control" placeholder="e.g. 192.168.10.99" />
+        </div>
+        <div class="form-group">
+          <label>TTL (seconds)</label>
+          <input type="number" name="ttl" class="form-control" value="300" min="10" />
+        </div>
+        <div class="form-group" style="display:flex; align-items:flex-end;">
+          <button type="submit" name="action" value="add_record" class="btn btn-primary">Save Record</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- Cache Controls -->
+  <section class="card-section">
+    <h2 class="section-title">🗑 Cache Management</h2>
+    <form method="POST" action="{{ url_for('networking.dns_demo') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" name="action" value="clear_cache" class="btn btn-warning"
+              onclick="return confirm('Flush the entire simulated DNS cache?')">🗑 Flush DNS Cache</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <!-- Zone Records -->
+  <section class="card-section">
+    <h2 class="section-title">📂 Simulated DNS Zone Records</h2>
+    {% if records %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>Hostname</th><th>Type</th><th>Target IP</th><th>TTL (s)</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody>
+          {% for r in records %}
+          <tr>
+            <td><code>{{ r.hostname }}</code></td>
+            <td><span class="badge badge-info">{{ r.record_type }}</span></td>
+            <td><code>{{ r.target_value }}</code></td>
+            <td>{{ r.ttl_seconds }}</td>
+            <td>{% if r.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-secondary">Inactive</span>{% endif %}</td>
+            <td>{{ r.updated_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No DNS records configured.</p></div>
+    {% endif %}
+  </section>
+
+  <!-- Cache Table -->
+  <section class="card-section">
+    <h2 class="section-title">⚡ Simulated DNS Cache (Active Entries)</h2>
+    {% if cache %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>Hostname</th><th>Resolved IP</th><th>Cached At</th><th>Expires At</th><th>Hit Count</th></tr></thead>
+        <tbody>
+          {% for c in cache %}
+          <tr>
+            <td><code>{{ c.hostname }}</code></td>
+            <td><code>{{ c.resolved_ip }}</code></td>
+            <td>{{ c.cached_at }}</td>
+            <td>{{ c.expires_at }}</td>
+            <td>{{ c.hit_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>DNS cache is empty. Run queries above to populate cache entries.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setQuery(h) {
+  document.querySelector('input[name="query_hostname"]').value = h;
+}
+</script>
+{% endblock %}

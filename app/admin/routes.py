@@ -1,0 +1,210 @@
+from werkzeug.security import generate_password_hash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from app.models.db import get_db, log_network_event
+from app.auth.routes import login_required, admin_required, verify_csrf_token, generate_csrf_token
+from app.networking.monitoring import get_application_health, get_recent_event_logs, get_event_statistics
+from app.networking.performance import get_performance_history
+
+bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+@bp.route('/dashboard')
+@login_required
+@admin_required
+def dashboard():
+    """
+    Administrator Dashboard.
+    Provides complete visibility into system status, user accounts, examination attempts, and questions.
+    """
+    db = get_db()
+    
+    users = db.execute("SELECT id, username, full_name, role, created_at FROM users ORDER BY id ASC").fetchall()
+    
+    attempts = db.execute(
+        """SELECT a.*, u.username, u.full_name, e.title as exam_title 
+           FROM exam_attempts a 
+           JOIN users u ON a.user_id = u.id 
+           JOIN examinations e ON a.exam_id = e.id 
+           ORDER BY a.start_time DESC LIMIT 25"""
+    ).fetchall()
+    
+    questions = [
+        dict(row) for row in db.execute(
+            "SELECT q.*, e.title as exam_title FROM questions q JOIN examinations e ON q.exam_id = e.id ORDER BY q.id ASC"
+        ).fetchall()
+    ]
+
+    exams = db.execute("SELECT * FROM examinations ORDER BY id ASC").fetchall()
+    
+    health = get_application_health(db)
+    event_stats = get_event_statistics(db)
+    recent_logs = get_recent_event_logs(db, limit=15)
+    perf_history = get_performance_history(db, limit=5)
+
+    return render_template(
+        'admin_dashboard.html',
+        users=users,
+        attempts=attempts,
+        questions=questions,
+        exams=exams,
+        health=health,
+        event_stats=event_stats,
+        recent_logs=recent_logs,
+        perf_history=perf_history,
+        csrf_token=generate_csrf_token()
+    )
+
+@bp.route('/questions/add', methods=['POST'])
+@login_required
+@admin_required
+def add_question():
+    """Add a new question to the examination question bank."""
+    if not verify_csrf_token():
+        flash("CSRF validation failed.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    exam_id = request.form.get('exam_id', type=int)
+    question_text = request.form.get('question_text', '').strip()
+    opt_a = request.form.get('option_a', '').strip()
+    opt_b = request.form.get('option_b', '').strip()
+    opt_c = request.form.get('option_c', '').strip()
+    opt_d = request.form.get('option_d', '').strip()
+    correct_option = request.form.get('correct_option', '').strip().upper()
+    marks = request.form.get('marks', type=int, default=1)
+    explanation = request.form.get('explanation', '').strip()
+
+    if not all([exam_id, question_text, opt_a, opt_b, opt_c, opt_d, correct_option]):
+        flash("All question fields are required.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    if correct_option not in ('A', 'B', 'C', 'D'):
+        flash("Correct option must be A, B, C, or D.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    db = get_db()
+    db.execute(
+        """INSERT INTO questions (exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks, explanation)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (exam_id, question_text, opt_a, opt_b, opt_c, opt_d, correct_option, marks, explanation)
+    )
+    db.commit()
+
+    log_network_event("ADMIN_ACTION", request.remote_addr, f"Admin added new question to Exam #{exam_id}", 200)
+    flash("Question successfully added to question bank.", "success")
+    return redirect(url_for('admin.dashboard'))
+
+@bp.route('/questions/edit/<int:question_id>', methods=['POST'])
+@login_required
+@admin_required
+def edit_question(question_id):
+    """Edit an existing question in the question bank."""
+    if not verify_csrf_token():
+        flash("CSRF validation failed.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    question_text = request.form.get('question_text', '').strip()
+    opt_a = request.form.get('option_a', '').strip()
+    opt_b = request.form.get('option_b', '').strip()
+    opt_c = request.form.get('option_c', '').strip()
+    opt_d = request.form.get('option_d', '').strip()
+    correct_option = request.form.get('correct_option', '').strip().upper()
+    marks = request.form.get('marks', type=int, default=1)
+    explanation = request.form.get('explanation', '').strip()
+
+    if not all([question_text, opt_a, opt_b, opt_c, opt_d, correct_option]):
+        flash("All fields are required to update the question.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    db = get_db()
+    db.execute(
+        """UPDATE questions 
+           SET question_text = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?,
+               correct_option = ?, marks = ?, explanation = ?
+           WHERE id = ?""",
+        (question_text, opt_a, opt_b, opt_c, opt_d, correct_option, marks, explanation, question_id)
+    )
+    db.commit()
+
+    log_network_event("ADMIN_ACTION", request.remote_addr, f"Admin updated question #{question_id}", 200)
+    flash("Question successfully updated.", "success")
+    return redirect(url_for('admin.dashboard'))
+
+@bp.route('/questions/delete/<int:question_id>', methods=['POST'])
+@login_required
+@admin_required
+def delete_question(question_id):
+    """Delete a question from the question bank."""
+    if not verify_csrf_token():
+        flash("CSRF validation failed.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    db = get_db()
+    db.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+    db.commit()
+
+    log_network_event("ADMIN_ACTION", request.remote_addr, f"Admin deleted question #{question_id}", 200)
+    flash("Question successfully deleted.", "info")
+    return redirect(url_for('admin.dashboard'))
+
+@bp.route('/logs')
+@login_required
+@admin_required
+def view_logs():
+    """View full application and network activity logs."""
+    db = get_db()
+    logs = get_recent_event_logs(db, limit=200)
+    stats = get_event_statistics(db)
+    return render_template('admin_logs.html', logs=logs, stats=stats)
+
+
+@bp.route('/students/add', methods=['POST'])
+@login_required
+@admin_required
+def add_student():
+    """Create a new student account from the admin dashboard."""
+    if not verify_csrf_token():
+        flash("Security validation failed. Please try again.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    full_name = request.form.get('full_name', '').strip()
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '')
+
+    if not full_name or not username or not password:
+        flash("Full name, username, and password are required.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    if len(username) > 50 or len(full_name) > 100:
+        flash("Username or full name is too long.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    if len(password) < 8:
+        flash("Password must contain at least 8 characters.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    db = get_db()
+
+    existing = db.execute(
+        "SELECT id FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+
+    if existing:
+        flash("That username already exists. Choose another.", "danger")
+        return redirect(url_for('admin.dashboard'))
+
+    db.execute(
+        """INSERT INTO users (username, password_hash, full_name, role)
+           VALUES (?, ?, ?, 'student')""",
+        (username, generate_password_hash(password), full_name)
+    )
+    db.commit()
+
+    log_network_event(
+        "ADMIN_ACTION",
+        request.remote_addr,
+        f"Admin created student account '{username}'.",
+        201
+    )
+
+    flash(f"Student account '{username}' created successfully.", "success")
+    return redirect(url_for('admin.dashboard'))

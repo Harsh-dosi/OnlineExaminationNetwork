@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% block title %}Student Dashboard — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>🎓 Student Dashboard</h1>
+    <p>Welcome, <strong>{{ current_user.full_name }}</strong> &nbsp;|&nbsp; User ID: {{ current_user.id }}</p>
+  </div>
+
+  <!-- Available Exam Card -->
+  <section class="card-section">
+    <h2 class="section-title">📋 Available Examination</h2>
+    {% if exam %}
+    <div class="exam-card">
+      <div class="exam-card-header">
+        <h3>{{ exam.title }}</h3>
+        <span class="badge badge-active">● Active</span>
+      </div>
+      <p class="exam-desc">{{ exam.description }}</p>
+      <div class="exam-meta-grid">
+        <div class="exam-meta-item">
+          <span class="meta-label">⏱ Duration</span>
+          <span class="meta-val">{{ exam.duration_minutes }} minutes</span>
+        </div>
+        <div class="exam-meta-item">
+          <span class="meta-label">❓ Questions</span>
+          <span class="meta-val">{{ question_count }} MCQs</span>
+        </div>
+        <div class="exam-meta-item">
+          <span class="meta-label">🏆 Total Marks</span>
+          <span class="meta-val">{{ exam.total_marks }}</span>
+        </div>
+        <div class="exam-meta-item">
+          <span class="meta-label">✅ Pass Marks</span>
+          <span class="meta-val">{{ exam.pass_marks }}</span>
+        </div>
+      </div>
+
+      <div class="exam-instructions">
+        <h4>📌 Instructions</h4>
+        <ul>
+          <li>All {{ question_count }} questions are multiple choice (A/B/C/D).</li>
+          <li>Each correct answer carries equal marks. No negative marking.</li>
+          <li>The timer starts immediately when you click "Start Examination".</li>
+          <li>The exam auto-submits when the timer reaches zero.</li>
+          <li>You may review and change answers before submission.</li>
+          <li>Do not close or refresh the browser during the examination.</li>
+        </ul>
+      </div>
+
+      {% set already_done = namespace(done=false) %}
+      {% for a in attempts %}
+        {% if a.exam_id == exam.id and a.status in ('completed', 'timed_out') %}
+          {% set already_done.done = true %}
+        {% endif %}
+      {% endfor %}
+
+      {% if already_done.done %}
+        <div class="alert alert-info">You have already completed this examination. Review your result below.</div>
+      {% else %}
+        <a href="{{ url_for('student.start_exam', exam_id=exam.id) }}" class="btn btn-primary btn-lg">
+          🚀 Start Examination
+        </a>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      <p>No active examinations are currently available. Please check back later.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- Previous Results -->
+  <section class="card-section">
+    <h2 class="section-title">📊 Your Examination History</h2>
+    {% if attempts %}
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Exam Title</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Percentage</th>
+            <th>Result</th>
+            <th>Date</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in attempts %}
+          <tr>
+            <td>{{ a.exam_title }}</td>
+            <td>
+              {% if a.status == 'completed' %}
+                <span class="badge badge-success">Completed</span>
+              {% elif a.status == 'timed_out' %}
+                <span class="badge badge-warning">Timed Out</span>
+              {% else %}
+                <span class="badge badge-info">In Progress</span>
+              {% endif %}
+            </td>
+            <td>{{ a.score }} / {{ a.total_possible }}</td>
+            <td>{{ a.percentage }}%</td>
+            <td>
+              {% if a.status == 'in_progress' %}
+                <span class="badge badge-info">—</span>
+              {% elif a.score >= 5 %}
+                <span class="badge badge-success">✅ Pass</span>
+              {% else %}
+                <span class="badge badge-danger">❌ Fail</span>
+              {% endif %}
+            </td>
+            <td>{{ a.start_time }}</td>
+            <td>
+              {% if a.status != 'in_progress' %}
+                <a href="{{ url_for('student.result', attempt_id=a.id) }}" class="btn btn-sm">View →</a>
+              {% else %}
+                <a href="{{ url_for('student.start_exam', exam_id=a.exam_id) }}" class="btn btn-sm btn-warning">Resume</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📝</div>
+      <p>No examination attempts yet. Complete an exam to see your results here.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

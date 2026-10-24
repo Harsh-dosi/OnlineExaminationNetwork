@@ -1,0 +1,8 @@
+# Online Examination Network - Pinned Dependencies
+# Compatible with Python 3.13+ on Windows
+Flask==3.0.3
+Werkzeug==3.0.3
+Jinja2==3.1.4
+requests==2.32.3
+pytest==8.2.2
+python-dotenv==1.0.1

@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>⚙ Administrator Dashboard</h1>
+    <p>Logged in as <strong>{{ current_user.full_name }}</strong> (Admin)</p>
+  </div>
+
+  <!-- System Health Strip -->
+  <div class="health-strip">
+    <div class="health-item {{ 'health-ok' if health.status == 'ONLINE' else 'health-bad' }}">
+      Server: {{ health.status }}
+    </div>
+    <div class="health-item health-ok">DB: {{ health.database_status }} ({{ health.database_latency_ms }}ms)</div>
+    <div class="health-item health-ok">Uptime: {{ health.uptime }}</div>
+    <div class="health-item health-ok">IP: {{ health.network_info.primary_lan_ip }}:{{ server_port }}</div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-container">
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="showTab('tab-users')">👥 Users</button>
+      <button class="tab-btn" onclick="showTab('tab-attempts')">📊 Attempts</button>
+      <button class="tab-btn" onclick="showTab('tab-questions')">❓ Questions</button>
+      <button class="tab-btn" onclick="showTab('tab-addq')">➕ Add Question</button>
+      <button class="tab-btn" onclick="showTab('tab-logs')">📋 Event Logs</button>
+      <button class="tab-btn" onclick="showTab('tab-perf')">⚡ Performance</button>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="tab-users" class="tab-content active">
+      <h3>Registered Users</h3>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Username</th><th>Full Name</th><th>Role</th><th>Created</th></tr></thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td><code>{{ u.username }}</code></td>
+              <td>{{ u.full_name }}</td>
+              <td><span class="badge {{ 'badge-admin' if u.role == 'admin' else 'badge-student' }}">{{ u.role }}</span></td>
+              <td>{{ u.created_at }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Attempts Tab -->
+    <div id="tab-attempts" class="tab-content">
+      <h3>Examination Attempts (Last 25)</h3>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Student</th><th>Exam</th><th>Score</th><th>%</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
+          <tbody>
+            {% for a in attempts %}
+            <tr>
+              <td>{{ a.id }}</td>
+              <td>{{ a.full_name }} ({{ a.username }})</td>
+              <td>{{ a.exam_title }}</td>
+              <td>{{ a.score }}/{{ a.total_possible }}</td>
+              <td>{{ a.percentage }}%</td>
+              <td>
+                {% if a.status == 'completed' %}<span class="badge badge-success">Completed</span>
+                {% elif a.status == 'timed_out' %}<span class="badge badge-warning">Timed Out</span>
+                {% else %}<span class="badge badge-info">In Progress</span>{% endif %}
+              </td>
+              <td>{{ a.start_time }}</td>
+              <td>{% if a.status != 'in_progress' %}<a href="{{ url_for('student.result', attempt_id=a.id) }}" class="btn btn-sm">View</a>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Questions Tab -->
+    <div id="tab-questions" class="tab-content">
+      <h3>Question Bank ({{ questions|length }} Questions)</h3>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Exam</th><th>Question (truncated)</th><th>Correct</th><th>Marks</th><th>Actions</th></tr></thead>
+          <tbody>
+            {% for q in questions %}
+            <tr>
+              <td>{{ q.id }}</td>
+              <td>{{ q.exam_title }}</td>
+              <td title="{{ q.question_text }}">{{ q.question_text[:60] }}{% if q.question_text|length > 60 %}…{% endif %}</td>
+              <td><strong>{{ q.correct_option }}</strong></td>
+              <td>{{ q.marks }}</td>
+              <td>
+                <button class="btn btn-sm" onclick="openEditModal({{ q.id }}, {{ q | tojson }})">Edit</button>
+                <form method="POST" action="{{ url_for('admin.delete_question', question_id=q.id) }}" style="display:inline"
+                      onsubmit="return confirm('Delete Question #{{ q.id }}?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                  <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Add Question Tab -->
+    <div id="tab-addq" class="tab-content">
+      <h3>Add New Question to Question Bank</h3>
+      <form method="POST" action="{{ url_for('admin.add_question') }}" class="admin-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="form-group">
+          <label>Examination</label>
+          <select name="exam_id" class="form-control" required>
+            {% for e in exams %}<option value="{{ e.id }}">{{ e.title }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Question Text</label>
+          <textarea name="question_text" class="form-control" rows="3" required></textarea>
+        </div>
+        <div class="options-form-grid">
+          {% for letter in ['a', 'b', 'c', 'd'] %}
+          <div class="form-group">
+            <label>Option {{ letter.upper() }}</label>
+            <input type="text" name="option_{{ letter }}" class="form-control" required />
+          </div>
+          {% endfor %}
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Correct Option</label>
+            <select name="correct_option" class="form-control" required>
+              <option value="A">A</option><option value="B">B</option>
+              <option value="C">C</option><option value="D">D</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Marks</label>
+            <input type="number" name="marks" class="form-control" value="1" min="1" max="10" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Explanation (shown to students after submission)</label>
+          <textarea name="explanation" class="form-control" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">➕ Add Question</button>
+      </form>
+    </div>
+
+    <!-- Event Logs Tab -->
+    <div id="tab-logs" class="tab-content">
+      <h3>Recent Application Event Logs</h3>
+      <p class="note">These are application-level events. For packet-level data, use Wireshark with filter <code>tcp.port == 5000</code>.</p>
+
+      {% if event_stats.event_summary %}
+      <div class="stat-chips">
+        {% for k, v in event_stats.event_summary.items() %}
+        <span class="stat-chip">{{ k }}: <strong>{{ v }}</strong></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Time</th><th>Type</th><th>Client IP</th><th>Status</th><th>Description</th></tr></thead>
+          <tbody>
+            {% for log in recent_logs %}
+            <tr>
+              <td style="white-space:nowrap">{{ log.timestamp }}</td>
+              <td><span class="log-type-badge log-{{ log.event_type | lower | replace('_', '-') }}">{{ log.event_type }}</span></td>
+              <td><code>{{ log.client_ip }}</code></td>
+              <td>{{ log.status_code }}</td>
+              <td>{{ log.description }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <a href="{{ url_for('admin.view_logs') }}" class="btn btn-sm">View All Logs →</a>
+    </div>
+
+    <!-- Performance Tab -->
+    <div id="tab-perf" class="tab-content">
+      <h3>Recent Performance Benchmark Results</h3>
+      {% if perf_history %}
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Test Name</th><th>Requests</th><th>OK/Fail</th><th>Avg ms</th><th>P95 ms</th><th>RPS</th><th>Time</th></tr></thead>
+          <tbody>
+            {% for p in perf_history %}
+            <tr>
+              <td>{{ p.test_name }}</td>
+              <td>{{ p.request_count }}</td>
+              <td>{{ p.successful_requests }}/{{ p.failed_requests }}</td>
+              <td>{{ p.avg_response_ms }}</td>
+              <td>{{ p.p95_response_ms }}</td>
+              <td>{{ p.throughput_rps }}</td>
+              <td>{{ p.timestamp }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p>No performance tests run yet. <a href="{{ url_for('networking.performance') }}">Run a benchmark →</a></p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Edit Question Modal -->
+<div id="edit-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Question</h3>
+      <button onclick="document.getElementById('edit-modal').style.display='none'" class="modal-close">×</button>
+    </div>
+    <form id="edit-form" method="POST" class="admin-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="form-group">
+        <label>Question Text</label>
+        <textarea name="question_text" id="edit-question-text" class="form-control" rows="3" required></textarea>
+      </div>
+      <div class="options-form-grid">
+        {% for letter in ['a', 'b', 'c', 'd'] %}
+        <div class="form-group">
+          <label>Option {{ letter.upper() }}</label>
+          <input type="text" name="option_{{ letter }}" id="edit-opt-{{ letter }}" class="form-control" required />
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Correct Option</label>
+          <select name="correct_option" id="edit-correct" class="form-control" required>
+            <option value="A">A</option><option value="B">B</option>
+            <option value="C">C</option><option value="D">D</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Marks</label>
+          <input type="number" name="marks" id="edit-marks" class="form-control" min="1" max="10" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Explanation</label>
+        <textarea name="explanation" id="edit-explanation" class="form-control" rows="2"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function openEditModal(qid, qdata) {
+  document.getElementById('edit-form').action = '/admin/questions/edit/' + qid;
+  document.getElementById('edit-question-text').value = qdata.question_text;
+  document.getElementById('edit-opt-a').value = qdata.option_a;
+  document.getElementById('edit-opt-b').value = qdata.option_b;
+  document.getElementById('edit-opt-c').value = qdata.option_c;
+  document.getElementById('edit-opt-d').value = qdata.option_d;
+  document.getElementById('edit-correct').value = qdata.correct_option;
+  document.getElementById('edit-marks').value = qdata.marks;
+  document.getElementById('edit-explanation').value = qdata.explanation || '';
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}404 Not Found — Online Examination Network{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="error-code">404</div>
+  <h1>Page Not Found</h1>
+  <p>The route <code>{{ path }}</code> does not exist on this server.</p>
+  <p class="note">This is a documented failure scenario. HTTP 404 responses are normal for invalid routes and are logged in the event log.</p>
+  <div style="margin-top:20px;">
+    <a href="{{ url_for('index') }}" class="btn btn-primary">← Return Home</a>
+    <a href="{{ url_for('networking.dashboard') }}" class="btn btn-secondary">Network Monitor</a>
+  </div>
+</div>
+{% endblock %}

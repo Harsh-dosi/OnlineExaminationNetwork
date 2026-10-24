@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Examination Result — Online Examination Network{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="result-header {{ 'result-pass' if passed else 'result-fail' }}">
+    <div class="result-icon">{{ '🏆' if passed else '📚' }}</div>
+    <h1>{{ 'Congratulations! You Passed!' if passed else 'Keep Studying — You Can Improve!' }}</h1>
+    <p>{{ attempt.exam_title }}</p>
+  </div>
+
+  <!-- Score Summary Cards -->
+  <div class="result-summary-grid">
+    <div class="result-stat">
+      <div class="stat-value">{{ attempt.score }}/{{ attempt.total_possible }}</div>
+      <div class="stat-label">Score</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-value {{ 'text-success' if passed else 'text-danger' }}">{{ attempt.percentage }}%</div>
+      <div class="stat-label">Percentage</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-value">{{ attempt.pass_marks }}</div>
+      <div class="stat-label">Pass Marks</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-value {{ 'text-success' if passed else 'text-danger' }}">
+        {{ '✅ PASS' if passed else '❌ FAIL' }}
+      </div>
+      <div class="stat-label">Result</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-value">{{ attempt.status | title }}</div>
+      <div class="stat-label">Submission Status</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-value" style="font-size:0.9rem;">{{ attempt.submitted_at or '—' }}</div>
+      <div class="stat-label">Submitted At</div>
+    </div>
+  </div>
+
+  <!-- Answer Review -->
+  <section class="card-section">
+    <h2 class="section-title">📋 Answer Review & Explanations</h2>
+    {% for a in answers %}
+    <div class="answer-review-card {{ 'correct-answer' if a.is_correct else 'wrong-answer' }}">
+      <div class="q-review-header">
+        <span class="q-num">Q{{ loop.index }}</span>
+        <span class="q-marks-badge">{{ a.marks_awarded }}/{{ a.marks }} marks</span>
+        <span class="q-status-badge {{ 'correct-badge' if a.is_correct else 'wrong-badge' }}">
+          {{ '✔ Correct' if a.is_correct else ('✘ Incorrect' if a.selected_option else '— Not Answered') }}
+        </span>
+      </div>
+      <p class="q-text">{{ a.question_text }}</p>
+      <div class="options-review">
+        {% for letter, text in [('A', a.option_a), ('B', a.option_b), ('C', a.option_c), ('D', a.option_d)] %}
+        <div class="option-review-item
+          {% if letter == a.correct_option %}option-correct{% endif %}
+          {% if a.selected_option == letter and not a.is_correct %}option-wrong-selected{% endif %}">
+          <span class="opt-key">{{ letter }}.</span> {{ text }}
+          {% if letter == a.correct_option %}<span class="correct-marker">← Correct Answer</span>{% endif %}
+          {% if a.selected_option == letter and not a.is_correct %}<span class="your-answer-marker">← Your Answer</span>{% endif %}
+          {% if a.selected_option == letter and a.is_correct %}<span class="correct-marker">← Your Answer (Correct!)</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% if a.explanation %}
+      <div class="explanation-box">
+        <strong>💡 Explanation:</strong> {{ a.explanation }}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+
+  <div class="result-actions">
+    <a href="{{ url_for('student.dashboard') }}" class="btn btn-primary">← Back to Dashboard</a>
+    {% if current_user and current_user.role == 'admin' %}
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">Admin Panel</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

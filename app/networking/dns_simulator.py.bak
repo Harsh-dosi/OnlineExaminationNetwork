@@ -1,0 +1,136 @@
+import datetime
+
+class DNSSimulator:
+    """
+    Academic DNS Simulation Engine.
+    Simulates local recursive/authoritative resolution for 'exam.local' and other intranet records.
+    Implements TTL caching, cache hit/miss tracking, and unknown-host (NXDOMAIN) responses.
+    Does not bind real UDP port 53 or modify Windows hosts file automatically.
+    """
+    def __init__(self, default_ttl=300):
+        self.default_ttl = default_ttl
+
+    def resolve(self, db, query_hostname):
+        """
+        Simulates resolving a hostname:
+        Step 1: Check in-memory/database simulated DNS cache and evaluate TTL expiry.
+        Step 2: If cache miss or expired, query simulated authoritative Zone records (dns_records table).
+        Step 3: If found, update/insert into cache with TTL; if not found, return NXDOMAIN (Non-Existent Domain).
+        """
+        hostname = (query_hostname or '').strip().lower()
+        if not hostname:
+            raise ValueError("Hostname cannot be empty.")
+
+        now = datetime.datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 1. Check DNS cache
+        cache_entry = db.execute(
+            "SELECT * FROM dns_cache WHERE hostname = ?",
+            (hostname,)
+        ).fetchone()
+
+        if cache_entry:
+            expires_at = datetime.datetime.strptime(cache_entry['expires_at'], "%Y-%m-%d %H:%M:%S")
+            if now < expires_at:
+                # Cache HIT
+                db.execute(
+                    "UPDATE dns_cache SET hit_count = hit_count + 1 WHERE id = ?",
+                    (cache_entry['id'],)
+                )
+                db.commit()
+                ttl_remaining = int((expires_at - now).total_seconds())
+                return {
+                    "hostname": hostname,
+                    "resolved_ip": cache_entry['resolved_ip'],
+                    "status": "NOERROR",
+                    "source": "CACHE_HIT",
+                    "ttl_remaining": ttl_remaining,
+                    "hit_count": cache_entry['hit_count'] + 1,
+                    "message": f"Resolved '{hostname}' from simulated DNS cache ({cache_entry['resolved_ip']}). TTL remaining: {ttl_remaining}s."
+                }
+            else:
+                # Cache entry expired - delete it
+                db.execute("DELETE FROM dns_cache WHERE id = ?", (cache_entry['id'],))
+                db.commit()
+
+        # 2. Authoritative Zone Lookup
+        record = db.execute(
+            "SELECT * FROM dns_records WHERE hostname = ? AND is_active = 1",
+            (hostname,)
+        ).fetchone()
+
+        if record:
+            target_ip = record['target_value']
+            ttl = record['ttl_seconds'] or self.default_ttl
+            expires_at = now + datetime.timedelta(seconds=ttl)
+            expires_str = expires_at.strftime("%Y-%m-%d %H:%M:%S")
+
+            # Store in cache
+            db.execute(
+                """INSERT INTO dns_cache (hostname, resolved_ip, cached_at, expires_at, hit_count)
+                   VALUES (?, ?, ?, ?, 1)
+                   ON CONFLICT(hostname) DO UPDATE SET 
+                       resolved_ip = excluded.resolved_ip,
+                       cached_at = excluded.cached_at,
+                       expires_at = excluded.expires_at,
+                       hit_count = 1""",
+                (hostname, target_ip, now_str, expires_str)
+            )
+            db.commit()
+
+            return {
+                "hostname": hostname,
+                "resolved_ip": target_ip,
+                "record_type": record['record_type'],
+                "status": "NOERROR",
+                "source": "AUTHORITATIVE_ZONE",
+                "ttl_remaining": ttl,
+                "hit_count": 1,
+                "message": f"Resolved '{hostname}' from simulated authoritative zone file to {target_ip} (Record Type: {record['record_type']}, TTL: {ttl}s)."
+            }
+        else:
+            # Domain not found
+            return {
+                "hostname": hostname,
+                "resolved_ip": None,
+                "status": "NXDOMAIN (Host Not Found)",
+                "source": "AUTHORITATIVE_ZONE",
+                "ttl_remaining": 0,
+                "hit_count": 0,
+                "message": f"NXDOMAIN: The hostname '{hostname}' does not exist in the simulated DNS zone records."
+            }
+
+    def add_or_update_record(self, db, hostname, target_value, record_type='A', ttl_seconds=300):
+        """Add or update a DNS zone record."""
+        hostname = (hostname or '').strip().lower()
+        target_value = (target_value or '').strip()
+        if not hostname or not target_value:
+            raise ValueError("Hostname and target value are required.")
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db.execute(
+            """INSERT INTO dns_records (hostname, record_type, target_value, ttl_seconds, is_active, updated_at)
+               VALUES (?, ?, ?, ?, 1, ?)
+               ON CONFLICT(hostname) DO UPDATE SET
+                   record_type = excluded.record_type,
+                   target_value = excluded.target_value,
+                   ttl_seconds = excluded.ttl_seconds,
+                   is_active = 1,
+                   updated_at = excluded.updated_at""",
+            (hostname, record_type.upper(), target_value, ttl_seconds, now_str)
+        )
+        # Invalidate any stale cache entry for this hostname
+        db.execute("DELETE FROM dns_cache WHERE hostname = ?", (hostname,))
+        db.commit()
+
+    def clear_cache(self, db):
+        """Flush simulated DNS cache."""
+        db.execute("DELETE FROM dns_cache")
+        db.commit()
+
+    def get_all_records(self, db):
+        """Retrieve all zone records and active cache entries."""
+        records = [dict(r) for r in db.execute("SELECT * FROM dns_records ORDER BY hostname ASC").fetchall()]
+        cache = [dict(r) for r in db.execute("SELECT * FROM dns_cache ORDER BY expires_at DESC").fetchall()]
+        return {"records": records, "cache": cache}
