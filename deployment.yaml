@@ -1,0 +1,28 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: online-exam-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: online-exam
+  template:
+    metadata:
+      labels:
+        app: online-exam
+    spec:
+      containers:
+        - name: online-exam-container
+          image: harshdosi/online-exam-network:1.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
