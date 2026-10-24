@@ -13,10 +13,10 @@ pipeline {
                 bat '"C:\\Users\\Harsh\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" -m pytest -v'
             }
         }
-        stage('Build Docker Image') {
-            steps {
-                bat 'docker build -t online-exam-network:1.0 .'
-            }
-        }
+       stage('Build Docker Image') {
+    steps {
+        bat '"C:\\Users\\Harsh\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe" build -t online-exam-network:1.0 .'
+    }
+}
     }
 }
